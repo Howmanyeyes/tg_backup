@@ -1,0 +1,4 @@
+SETTINGS.yaml
+/__pycache__
+/tg_backup_venv
+*.log
