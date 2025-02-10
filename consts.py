@@ -1,4 +1,5 @@
 import json
+import platform
 
 import yaml
 
@@ -12,5 +13,7 @@ if not BOT_TOKEN:
 
 logger = setup_logger(name='tg_backuper', filepath='logs/log.log')
 
-with open("messages.json", "r") as file:
+with open("messages.json", "r", encoding='utf-8') as file:
     M = json.load(file)
+
+OS_NAME = platform.system()

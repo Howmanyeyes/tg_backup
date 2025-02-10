@@ -1,18 +1,24 @@
 import logging
-from telegram.ext import ApplicationBuilder
+import asyncio
+
+from aiogram import Bot, Dispatcher
+from aiogram.fsm.storage.memory import MemoryStorage
 
 from consts import BOT_TOKEN, logger
 import error_router, start_router
 
-def main():
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
+async def main():
+    bot = Bot(token=BOT_TOKEN)
+    storage = MemoryStorage()
+    dp = Dispatcher(storage=storage)
 
-    start_router.register(application)
+    dp.include_router(start_router.router)
+    dp.include_router(error_router.router)
 
-    error_router.register(application)
-
-    # Start the bot in polling mode
-    application.run_polling()
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await bot.session.close()
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())

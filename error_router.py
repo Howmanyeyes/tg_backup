@@ -1,23 +1,17 @@
-from telegram import Update
-from telegram.ext import MessageHandler, filters, CallbackContext
+from aiogram import Router, types
 
 from consts import M
 
 MESSAGES = M["fail"]
+router = Router()
 
-async def handle_unknown_message(update: Update, context: CallbackContext) -> None:
+@router.message()
+async def unknown_message_handler(message: types.Message):
     """
-    This handler responds to any unexpected user message.
+    Handles any unrecognized message by sending a default response.
     """
-    # Send a fallback message to the user.
-    await update.message.reply_text(
+    await message.answer(
         MESSAGES["msg"]
     )
-
-def register(application):
-    """
-    Registers the unknown message handler to the application.
-    The handler is added with a high group number so that it's checked last.
-    """
-    # group=100 ensures that this handler is evaluated after other handlers.
-    application.add_handler(MessageHandler(filters.ALL, handle_unknown_message), group=100)
+    # Stop further processing of this update.
+    # raise CancelHandler()
