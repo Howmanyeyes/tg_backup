@@ -3,7 +3,7 @@ import platform
 
 import yaml
 
-from logs import setup_logger
+from utils import setup_logger, ChatsStorage
 
 with open("SETTINGS.yaml", "r", -1, "utf-8") as file:
     config = yaml.safe_load(file)
@@ -17,3 +17,6 @@ with open("messages.json", "r", encoding='utf-8') as file:
     M = json.load(file)
 
 OS_NAME = platform.system()
+
+chats = ChatsStorage(file_path="chats.json")
+chats.load()

@@ -1,0 +1,24 @@
+{
+  "chats": [
+    {
+      "chat_id": 417766628,
+      "chat_type": "private",
+      "title": null,
+      "username": "howmanyeyes",
+      "topics": null
+    },
+    {
+      "chat_id": -1002281788520,
+      "chat_type": "supergroup",
+      "title": "testing_bot",
+      "username": null,
+      "topics": [
+        {
+          "topic_id": 2,
+          "name": "Unknown"
+        }
+      ]
+    }
+  ],
+  "file_path": "chats.json"
+}
