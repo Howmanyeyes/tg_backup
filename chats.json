@@ -16,9 +16,21 @@
         {
           "topic_id": 2,
           "name": "Unknown"
+        },
+        {
+          "topic_id": 186,
+          "name": "backup - 13.02.2025"
         }
       ]
+    },
+    {
+      "chat_id": 895838626,
+      "chat_type": "private",
+      "title": "No title",
+      "username": "zheshiyulan",
+      "topics": []
     }
   ],
-  "file_path": "chats.json"
+  "file_path": "chats.json",
+  "workchat": -1002281788520
 }

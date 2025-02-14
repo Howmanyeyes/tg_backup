@@ -2,13 +2,19 @@ import logging
 import os
 import sys
 import queue
+import math
+import datetime
 from logging.handlers import QueueHandler, QueueListener
 from collections.abc import Mapping
 from typing import Optional, List, Any, Callable, Awaitable
+import multiprocessing
+import subprocess
+import time
 
+import requests
 from pydantic import BaseModel, Field
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram import BaseMiddleware, types
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
+from aiogram import BaseMiddleware, types, Bot
 
 class TextFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
@@ -117,6 +123,7 @@ class Chat(BaseModel):
 class ChatsStorage(BaseModel):
     chats: List[Chat] = Field(default_factory=list, description="List of chats where the bot is present")
     file_path: str
+    workchat: Optional[int] = Field(default=None)
 
     def add_chat(self, chat: Chat) -> None:
         """
@@ -157,6 +164,7 @@ class ChatsStorage(BaseModel):
                 data = f.read()
                 loaded_storage = self.__class__.model_validate_json(data)
                 self.chats = loaded_storage.chats
+                self.workchat = loaded_storage.workchat
         except FileNotFoundError:
             self.chats=[]
 
@@ -221,7 +229,6 @@ class ChatTrackingMiddleware(BaseMiddleware):
                 # Optionally, update title/username if needed.
             else:
                 self.storage.add_chat(new_chat)
-
             # Save the updated storage to file.
             self.storage.save()
         # Continue processing the update.
@@ -260,3 +267,142 @@ if __name__ == "__main__":
     # Save again after deletion
     storage.save()
     print("Current storage:", storage.model_dump_json(indent=2))
+
+def get_size(path: str) -> int:
+    if os.path.isfile(path):
+        return os.path.getsize(path)
+    elif os.path.isdir(path):
+        total_size = 0
+        for dirpath, dirnames, filenames in os.walk(path):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                # Skip if it is a symbolic link (optional)
+                if not os.path.islink(fp):
+                    total_size += os.path.getsize(fp)
+        return human_readable_size(total_size), estimated_backup_time(total_size)
+    else:
+        raise ValueError("The provided path is neither a file nor a directory.")
+    
+def human_readable_size(size_bytes: int) -> str:
+    """
+    Convert a file size in bytes into a human-readable string with the most relevant unit.
+    
+    Args:
+        size_bytes (int): Size in bytes.
+    
+    Returns:
+        str: Human-readable size string (e.g. "50.5 GB").
+    """
+    if size_bytes < 1024:
+        return f"{size_bytes} bytes"
+    elif size_bytes < 1024**2:
+        return f"{size_bytes / 1024:.1f} KB"
+    elif size_bytes < 1024**3:
+        return f"{size_bytes / 1024**2:.1f} MB"
+    elif size_bytes < 1024**4:
+        return f"{size_bytes / 1024**3:.1f} GB"
+    else:
+        return f"{size_bytes / 1024**4:.1f} TB"
+    
+def estimated_backup_time(size_bytes: int, upload_speed_mbps: float = 1.5) -> str:
+    """
+    Calculate the estimated backup time for a given size in bytes at a specified upload speed.
+    
+    Args:
+        size_bytes (int): Total size of the data in bytes.
+        upload_speed_mbps (float): Upload speed in megabits per second (Mb/s). Default is 4.7 Mb/s.
+    Returns:
+        str: The estimated time as a string (e.g. "2h 15m 30.0s").
+    """
+    # Convert size from bytes to bits
+    total_bits = size_bytes * 8
+    # Convert upload speed from Mb/s to bits per second (using SI: 1 Mb = 1,000,000 bits)
+    speed_bps = upload_speed_mbps * 1_000_000
+    # Calculate total seconds required to upload the data
+    total_seconds = total_bits / speed_bps
+
+    hours = int(total_seconds // 3600)
+    minutes = int((total_seconds % 3600) // 60)
+    seconds = total_seconds % 60
+
+    if hours > 0:
+        return f"{hours}h {minutes}m {seconds:.1f}s"
+    elif minutes > 0:
+        return f"{minutes}m {seconds:.1f}s"
+    else:
+        return f"{seconds:.1f}s"
+    
+def create_backup(path: str):
+    # Get the directory of the current script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    tmp_dir = os.path.join(script_dir, "tmp")
+    
+    # Ensure the `tmp` directory exists in the script directory
+    os.makedirs(tmp_dir, exist_ok=True)
+    
+    # Get current date and format it
+    current_date = datetime.datetime.now().strftime("%Y-%m-%d")
+    
+    # Extract the name of the file or folder
+    base_name = os.path.basename(os.path.abspath(path))
+    
+    # Define output file pattern
+    output_pattern = os.path.join(tmp_dir, f"{current_date}_{base_name}.7z")
+    
+    # Calculate CPU usage limit (70% of available CPUs)
+    num_threads = max(1, int(multiprocessing.cpu_count() * 0.7))
+    
+    # Define command for 7z compression
+    command = [
+        "7z", "a", output_pattern,
+        path, 
+        "-m0=LZMA2",  # Use LZMA2 compression
+        "-mx5",        # Medium compression level
+        "-v48m",       # Split into 48MB parts
+        f"-mmt{num_threads}"  # Use 70% of available CPU cores
+    ]
+    
+    # Execute the command
+    subprocess.run(command, check=True)
+
+
+def send_backup_files(bot: Bot, chat_id: int, thread_id: int = None):
+    """
+    Sends all files from the `tmp` folder to the specified chat and deletes them after sending.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    tmp_dir = os.path.join(script_dir, "tmp")
+    
+    if not os.path.exists(tmp_dir):
+        print("No tmp directory found.")
+        return
+    
+    files = sorted(os.listdir(tmp_dir))  # Sort files to maintain order
+    token = bot.token  # Retrieve the token from the bot instance
+
+    for file in files:
+        file_path = os.path.join(tmp_dir, file)
+        if os.path.isfile(file_path):
+            try:
+                start_time = time.time()
+                with open(file_path, "rb") as file_data:
+                    response = requests.post(
+                        f"https://api.telegram.org/bot{token}/sendDocument",
+                        files={"document": file_data},
+                        data={"chat_id": chat_id, "message_thread_id": thread_id}
+                    )
+                elapsed_time = time.time() - start_time
+                file_size = os.path.getsize(file_path) / (1024 * 1024)  # Convert to MB
+                speed = file_size / elapsed_time if elapsed_time > 0 else 0
+                print(f"Sent {file} in {elapsed_time:.2f} seconds at {speed:.2f} MB/s")
+            except Exception as e:
+                print(f"Failed to send {file}: {e}")
+    time.sleep(3)
+    # Remove all files after sending
+    for file in files:
+        file_path = os.path.join(tmp_dir, file)
+        try:
+            os.remove(file_path)
+            print(f"Deleted {file}")
+        except Exception as e:
+            print(f"Failed to delete {file}: {e}")
