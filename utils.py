@@ -395,6 +395,16 @@ def send_backup_files(bot: Bot, chat_id: int, thread_id: int = None):
                 file_size = os.path.getsize(file_path) / (1024 * 1024)  # Convert to MB
                 speed = file_size / elapsed_time if elapsed_time > 0 else 0
                 print(f"Sent {file} in {elapsed_time:.2f} seconds at {speed:.2f} MB/s")
+
+                resp_json = response.json()
+                if resp_json.get("ok"):
+                    document = resp_json["result"]["document"]
+                    file_id = document["file_id"]
+                    print(f"File ID for {file}: {file_id}")
+                    # Store the file_id with the file name as key
+                    uploaded_files[file] = file_id
+                else:
+                    print(f"Error sending {file}: {resp_json}")
             except Exception as e:
                 print(f"Failed to send {file}: {e}")
     time.sleep(3)
