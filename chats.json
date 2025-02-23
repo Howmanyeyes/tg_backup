@@ -32,5 +32,6 @@
     }
   ],
   "file_path": "chats.json",
-  "workchat": -1002281788520
+  "workchat": -1002281788520,
+  "mode": "individual"
 }

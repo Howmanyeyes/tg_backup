@@ -2,20 +2,20 @@ import logging
 import os
 import sys
 import queue
-import math
 import datetime
 from logging.handlers import QueueHandler, QueueListener
 from collections.abc import Mapping
-from typing import Optional, List, Any, Callable, Awaitable
+from typing import Any, Callable, Awaitable
 import multiprocessing
 import subprocess
 import time
+import shutil
 
 import requests
-from pydantic import BaseModel, Field
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram import BaseMiddleware, types, Bot
 
+from storage import ChatsStorage, Chat, Topic
 class TextFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         base_message = super().format(record)
@@ -109,66 +109,6 @@ def buttons(buttons_dict: dict, cols: int = 1) -> InlineKeyboardMarkup:
     
     return keyboard
 
-class Topic(BaseModel):
-    topic_id: int = Field(..., description="Unique identifier for the forum topic (thread)")
-    name: str = Field(..., description="Name of the forum topic")
-
-class Chat(BaseModel):
-    chat_id: int = Field(..., description="Unique identifier for the chat")
-    chat_type: str = Field(..., description="Type of chat: 'private', 'group', 'supergroup', or 'channel'")
-    title: Optional[str] = Field(None, description="Title of the chat (if applicable)")
-    username: Optional[str] = Field(None, description="Username for the chat (if applicable)")
-    topics: Optional[List[Topic]] = Field(None, description="List of forum topics for chats that support topics")
-
-class ChatsStorage(BaseModel):
-    chats: List[Chat] = Field(default_factory=list, description="List of chats where the bot is present")
-    file_path: str
-    workchat: Optional[int] = Field(default=None)
-
-    def add_chat(self, chat: Chat) -> None:
-        """
-        Add a new chat or update an existing one by chat_id.
-        """
-        for idx, existing_chat in enumerate(self.chats):
-            if existing_chat.chat_id == chat.chat_id:
-                self.chats[idx] = chat
-                return
-        self.chats.append(chat)
-
-    def delete_chat(self, chat_id: int) -> bool:
-        """
-        Delete a chat by its chat_id.
-        
-        Returns:
-            bool: True if the chat was found and deleted, False otherwise.
-        """
-        for idx, existing_chat in enumerate(self.chats):
-            if existing_chat.chat_id == chat_id:
-                del self.chats[idx]
-                return True
-        return False
-
-    def save(self) -> None:
-        """
-        Save the storage to a JSON file.
-        """
-        with open(self.file_path, 'w', encoding='utf-8') as f:
-            f.write(self.model_dump_json(indent=2))
-
-    def load(self) -> None:
-        """
-        Load the storage from a JSON file. If the file does not exist, return an empty storage.
-        """
-        try:
-            with open(self.file_path, 'r', encoding='utf-8') as f:
-                data = f.read()
-                loaded_storage = self.__class__.model_validate_json(data)
-                self.chats = loaded_storage.chats
-                self.workchat = loaded_storage.workchat
-        except FileNotFoundError:
-            self.chats=[]
-
-
 class ChatTrackingMiddleware(BaseMiddleware):
     def __init__(self, storage: ChatsStorage) -> None:
         """
@@ -186,6 +126,7 @@ class ChatTrackingMiddleware(BaseMiddleware):
         data: dict[str, Any]
     ) -> Any:
         # Check if the update has a message
+        self.storage.load()
         if event.chat:
             chat_data = event.chat
 
@@ -331,8 +272,9 @@ def estimated_backup_time(size_bytes: int, upload_speed_mbps: float = 1.5) -> st
         return f"{minutes}m {seconds:.1f}s"
     else:
         return f"{seconds:.1f}s"
-    
-def create_backup(path: str):
+
+from consts import backups
+def create_backup(path: str, mode: str):
     # Get the directory of the current script
     script_dir = os.path.dirname(os.path.abspath(__file__))
     tmp_dir = os.path.join(script_dir, "tmp")
@@ -351,20 +293,64 @@ def create_backup(path: str):
     
     # Calculate CPU usage limit (70% of available CPUs)
     num_threads = max(1, int(multiprocessing.cpu_count() * 0.7))
-    
+    if mode == "archive":
     # Define command for 7z compression
-    command = [
-        "7z", "a", output_pattern,
-        path, 
-        "-m0=LZMA2",  # Use LZMA2 compression
-        "-mx5",        # Medium compression level
-        "-v48m",       # Split into 48MB parts
-        f"-mmt{num_threads}"  # Use 70% of available CPU cores
-    ]
-    
-    # Execute the command
-    subprocess.run(command, check=True)
-
+        command = [
+            "7z", "a", output_pattern,
+            path, 
+            "-m0=LZMA2",  # Use LZMA2 compression
+            "-mx5",        # Medium compression level
+            "-v48m",       # Split into 48MB parts
+            f"-mmt{num_threads}"  # Use 70% of available CPU cores
+        ]
+        
+        # Execute the command
+        subprocess.run(command, check=True)
+    else:
+        if os.path.isdir(path):
+            for root, dirs, files in os.walk(path):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    file_size = os.path.getsize(file_path)
+                    if file_size < 48 * 1024 * 1024:
+                        # File is less than 48MB: copy it to tmp.
+                        dest_file = os.path.join(tmp_dir, file)
+                        shutil.copy2(file_path, dest_file)
+                        print(f"Copied {file} to {tmp_dir}")
+                    else:
+                        # File is larger than 48MB: compress it into a multi-volume archive.
+                        output_file = os.path.join(tmp_dir, f"{current_date}_{file}.7z")
+                        command = [
+                            "7z", "a", output_file,
+                            file_path,
+                            "-m0=LZMA2",
+                            "-mx5",
+                            "-v48m",
+                            f"-mmt{num_threads}"
+                        ]
+                        subprocess.run(command, check=True)
+                        print(f"Compressed {file} into multi-volume archive {output_file}")
+        elif os.path.isfile(path):
+            # Single file: check its size.
+            file_size = os.path.getsize(path)
+            if file_size < 48 * 1024 * 1024:
+                # Copy file to tmp.
+                dest_file = os.path.join(tmp_dir, base_name)
+                shutil.copy2(path, dest_file)
+                print(f"Copied file {base_name} to {tmp_dir}")
+            else:
+                # Compress file into a multi-volume archive.
+                output_file = os.path.join(tmp_dir, f"{current_date}_{base_name}.7z")
+                command = [
+                    "7z", "a", output_file,
+                    path,
+                    "-m0=LZMA2",
+                    "-mx5",
+                    "-v48m",
+                    f"-mmt{num_threads}"
+                ]
+                subprocess.run(command, check=True)
+                print(f"Compressed file {base_name} into multi-volume archive {output_file}")
 
 def send_backup_files(bot: Bot, chat_id: int, thread_id: int = None):
     """
@@ -402,7 +388,6 @@ def send_backup_files(bot: Bot, chat_id: int, thread_id: int = None):
                     file_id = document["file_id"]
                     print(f"File ID for {file}: {file_id}")
                     # Store the file_id with the file name as key
-                    uploaded_files[file] = file_id
                 else:
                     print(f"Error sending {file}: {resp_json}")
             except Exception as e:

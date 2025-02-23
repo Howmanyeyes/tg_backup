@@ -39,3 +39,16 @@ async def dir_set(callback: CallbackQuery):
     await callback.message.reply(text=f'{MESSAGES["choose_workdir"]["set_succ"]} {workchat_name}')
     await callback.bot.send_message(chat_id=workdir_id,
                                     text=MESSAGES["choose_workdir"]["set_alert"])
+    
+@router.callback_query(F.data == 'choose_mode')
+async def mode_choise(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.reply(text=MESSAGES["mode"]["msg"],
+                                 reply_markup=buttons(MESSAGES["mode"]["buttons"]))
+    
+@router.callback_query(F.data.in_(["archive", "individual"]))
+async def mode_set(callback: CallbackQuery):
+    chats.mode = callback.data
+    chats.save()
+    await callback.answer(text=MESSAGES["mode"]["succ"])
+    await callback.message.delete()
