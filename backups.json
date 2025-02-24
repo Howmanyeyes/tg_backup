@@ -1,0 +1,29 @@
+{
+  "backups": [
+    {
+      "name": "23.02.2025",
+      "children": [
+        {
+          "name": "2025-02-24_23.02.2025.7z",
+          "upload_id": [
+            "BQACAgIAAyEGAASIAVRoAAIDDWe8RbFeT54n35IW-LUY3JAQoCi9AAKlZAACTdThSVP0gXZqQm3tNgQ",
+            "BQACAgIAAyEGAASIAVRoAAIDDme8RbTRZHYWVxMCScJtQULcPf94AAKmZAACTdThSer_zrbiHaOyNgQ",
+            "BQACAgIAAyEGAASIAVRoAAIDD2e8Rb4z8oRvR1JBs8fznp6uK8sYAAKnZAACTdThSXrXMc5ofHnWNgQ",
+            "BQACAgIAAyEGAASIAVRoAAIDEGe8RcHpU23IPPjY5dhvTDRUlDBYAAKoZAACTdThSdsxuskSh2rHNgQ",
+            "BQACAgIAAyEGAASIAVRoAAIDEWe8RcQxn6sL0YXhl8mbtMc4vFLhAAKpZAACTdThSdRbzVyFuy1MNgQ",
+            "BQACAgIAAyEGAASIAVRoAAIDEme8RcfT1OzGwd8DuJUEAyHj_fb0AAKqZAACTdThSW-logLjrPp0NgQ",
+            "BQACAgIAAyEGAASIAVRoAAIDE2e8Rckz9GzxvxhHjVdsfmxF4pFaAAKrZAACTdThSVU3Ha9WQtfmNgQ",
+            "BQACAgIAAyEGAASIAVRoAAIDFGe8RcuQ9-PCQgiGzZcQMqGQKhhXAAKsZAACTdThSU9BYR_wOfn9NgQ",
+            "BQACAgIAAyEGAASIAVRoAAIDFWe8RcynGa1Pr4QvEpyWkQ6kSE_yAAKtZAACTdThSUoKlOBRwEYQNgQ"
+          ],
+          "absolute_path": "c:\\Users\\1TB\\Desktop\\personal\\tg_backup\\tmp\\2025-02-24_23.02.2025.7z",
+          "is_split": true
+        }
+      ],
+      "token": "451cd1b8-1146-406e-928d-a11f891dd921",
+      "uploaded": true,
+      "creatin_date": "24.02.2025-13-10-54"
+    }
+  ],
+  "file_path": "backups.json"
+}

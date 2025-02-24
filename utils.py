@@ -2,18 +2,12 @@ import logging
 import os
 import sys
 import queue
-import datetime
 from logging.handlers import QueueHandler, QueueListener
 from collections.abc import Mapping
 from typing import Any, Callable, Awaitable
-import multiprocessing
-import subprocess
-import time
-import shutil
 
-import requests
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
-from aiogram import BaseMiddleware, types, Bot
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram import BaseMiddleware, types
 
 from storage import ChatsStorage, Chat, Topic
 class TextFormatter(logging.Formatter):
@@ -174,40 +168,6 @@ class ChatTrackingMiddleware(BaseMiddleware):
             self.storage.save()
         # Continue processing the update.
         return await handler(event, data)
-    
-if __name__ == "__main__":
-    storage = ChatsStorage(file_path="suka.json")
-    storage.load()
-    
-    # Try loading existing storage; if not found, create a new one.
-
-    
-    # Add a private chat
-    private_chat = Chat(
-        chat_id=123456789,
-        chat_type="private",
-        username="user_example"
-    )
-    storage.add_chat(private_chat)
-    
-    # Add a forum-enabled chat with topics
-    forum_chat = Chat(
-        chat_id=-111345734567456745671155,
-        chat_type="supergroup",
-        title="Forum Chat",
-        topics=[
-            Topic(topic_id=1, name="General Discussion"),
-            Topic(topic_id=2, name="Announcements")
-        ]
-    )
-    storage.add_chat(forum_chat)
-    
-    # Save the updated storage to file
-    storage.save()
-    
-    # Save again after deletion
-    storage.save()
-    print("Current storage:", storage.model_dump_json(indent=2))
 
 def get_size(path: str) -> int:
     if os.path.isfile(path):
@@ -272,132 +232,3 @@ def estimated_backup_time(size_bytes: int, upload_speed_mbps: float = 1.5) -> st
         return f"{minutes}m {seconds:.1f}s"
     else:
         return f"{seconds:.1f}s"
-
-from consts import backups
-def create_backup(path: str, mode: str):
-    # Get the directory of the current script
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    tmp_dir = os.path.join(script_dir, "tmp")
-    
-    # Ensure the `tmp` directory exists in the script directory
-    os.makedirs(tmp_dir, exist_ok=True)
-    
-    # Get current date and format it
-    current_date = datetime.datetime.now().strftime("%Y-%m-%d")
-    
-    # Extract the name of the file or folder
-    base_name = os.path.basename(os.path.abspath(path))
-    
-    # Define output file pattern
-    output_pattern = os.path.join(tmp_dir, f"{current_date}_{base_name}.7z")
-    
-    # Calculate CPU usage limit (70% of available CPUs)
-    num_threads = max(1, int(multiprocessing.cpu_count() * 0.7))
-    if mode == "archive":
-    # Define command for 7z compression
-        command = [
-            "7z", "a", output_pattern,
-            path, 
-            "-m0=LZMA2",  # Use LZMA2 compression
-            "-mx5",        # Medium compression level
-            "-v48m",       # Split into 48MB parts
-            f"-mmt{num_threads}"  # Use 70% of available CPU cores
-        ]
-        
-        # Execute the command
-        subprocess.run(command, check=True)
-    else:
-        if os.path.isdir(path):
-            for root, dirs, files in os.walk(path):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    file_size = os.path.getsize(file_path)
-                    if file_size < 48 * 1024 * 1024:
-                        # File is less than 48MB: copy it to tmp.
-                        dest_file = os.path.join(tmp_dir, file)
-                        shutil.copy2(file_path, dest_file)
-                        print(f"Copied {file} to {tmp_dir}")
-                    else:
-                        # File is larger than 48MB: compress it into a multi-volume archive.
-                        output_file = os.path.join(tmp_dir, f"{current_date}_{file}.7z")
-                        command = [
-                            "7z", "a", output_file,
-                            file_path,
-                            "-m0=LZMA2",
-                            "-mx5",
-                            "-v48m",
-                            f"-mmt{num_threads}"
-                        ]
-                        subprocess.run(command, check=True)
-                        print(f"Compressed {file} into multi-volume archive {output_file}")
-        elif os.path.isfile(path):
-            # Single file: check its size.
-            file_size = os.path.getsize(path)
-            if file_size < 48 * 1024 * 1024:
-                # Copy file to tmp.
-                dest_file = os.path.join(tmp_dir, base_name)
-                shutil.copy2(path, dest_file)
-                print(f"Copied file {base_name} to {tmp_dir}")
-            else:
-                # Compress file into a multi-volume archive.
-                output_file = os.path.join(tmp_dir, f"{current_date}_{base_name}.7z")
-                command = [
-                    "7z", "a", output_file,
-                    path,
-                    "-m0=LZMA2",
-                    "-mx5",
-                    "-v48m",
-                    f"-mmt{num_threads}"
-                ]
-                subprocess.run(command, check=True)
-                print(f"Compressed file {base_name} into multi-volume archive {output_file}")
-
-def send_backup_files(bot: Bot, chat_id: int, thread_id: int = None):
-    """
-    Sends all files from the `tmp` folder to the specified chat and deletes them after sending.
-    """
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    tmp_dir = os.path.join(script_dir, "tmp")
-    
-    if not os.path.exists(tmp_dir):
-        print("No tmp directory found.")
-        return
-    
-    files = sorted(os.listdir(tmp_dir))  # Sort files to maintain order
-    token = bot.token  # Retrieve the token from the bot instance
-
-    for file in files:
-        file_path = os.path.join(tmp_dir, file)
-        if os.path.isfile(file_path):
-            try:
-                start_time = time.time()
-                with open(file_path, "rb") as file_data:
-                    response = requests.post(
-                        f"https://api.telegram.org/bot{token}/sendDocument",
-                        files={"document": file_data},
-                        data={"chat_id": chat_id, "message_thread_id": thread_id}
-                    )
-                elapsed_time = time.time() - start_time
-                file_size = os.path.getsize(file_path) / (1024 * 1024)  # Convert to MB
-                speed = file_size / elapsed_time if elapsed_time > 0 else 0
-                print(f"Sent {file} in {elapsed_time:.2f} seconds at {speed:.2f} MB/s")
-
-                resp_json = response.json()
-                if resp_json.get("ok"):
-                    document = resp_json["result"]["document"]
-                    file_id = document["file_id"]
-                    print(f"File ID for {file}: {file_id}")
-                    # Store the file_id with the file name as key
-                else:
-                    print(f"Error sending {file}: {resp_json}")
-            except Exception as e:
-                print(f"Failed to send {file}: {e}")
-    time.sleep(3)
-    # Remove all files after sending
-    for file in files:
-        file_path = os.path.join(tmp_dir, file)
-        try:
-            os.remove(file_path)
-            print(f"Deleted {file}")
-        except Exception as e:
-            print(f"Failed to delete {file}: {e}")

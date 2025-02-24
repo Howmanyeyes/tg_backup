@@ -6,6 +6,8 @@ import yaml
 from utils import setup_logger
 from storage import BackupStorage, ChatsStorage
 
+
+THRESHOLD = 18 * 1024 * 1024  # 48 MB threshold
 with open("SETTINGS.yaml", "r", -1, "utf-8") as file:
     config = yaml.safe_load(file)
 BOT_TOKEN = config.get("BOT_TOKEN")
@@ -24,3 +26,4 @@ chats.load()
 
 backups = BackupStorage(file_path="backups.json")
 backups.load()
+

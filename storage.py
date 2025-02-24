@@ -1,5 +1,6 @@
 import os
-
+import uuid
+import datetime
 from typing import Optional, List, Union
 
 from pydantic import BaseModel, Field
@@ -19,7 +20,7 @@ class ChatsStorage(BaseModel):
     chats: List[Chat] = Field(default_factory=list, description="List of chats where the bot is present")
     file_path: str
     workchat: Optional[int] = Field(default=None)
-    mode: Optional[str] = Field(default=None)
+    mode: Optional[str] = Field(default="individual")
 
     def add_chat(self, chat: Chat) -> None:
         """
@@ -65,26 +66,36 @@ class ChatsStorage(BaseModel):
         except FileNotFoundError:
             self.chats=[]
 
+def generate_token() -> str:
+    return str(uuid.uuid4())
+def generate_date() -> str:
+    return  datetime.datetime.now().strftime('%d.%m.%Y-%H-%M-%S')
+
 class FileUpload(BaseModel):
     name: str = Field(..., description="Name of the file")
-    upload_id: str = Field("", description="Upload identifier for the file (default empty)")
+    upload_id: list[str] = Field([], description="Upload identifier for the file (default empty)")
+    absolute_path: Optional[str] = Field(None, description="Absolute path to the file in the tmp folder, or the base path for a split archive")
+    is_split: bool = Field(False, description="Indicates if this file is split into multiple parts")
 
 class FolderUpload(BaseModel):
     name: str = Field(..., description="Name of the folder")
-    upload_id: str = Field("", description="Upload identifier for the folder (default empty)")
     children: Optional[List[Union["FileUpload", "FolderUpload"]]] = Field(default_factory=list, description="List of files or subfolders contained in the folder")
 
+class BackupRootFolder(FolderUpload):
+    token: str = Field(default_factory=generate_token, description="Unique token for the backup root folder")
+    uploaded: bool = Field(False, description="Indicates if this backup is uploaded")
+    creatin_date: str = Field(default_factory=generate_date, description="Date of creation of backup")
 
 class BackupStorage(BaseModel):
-    backups: List[FolderUpload] = Field(default_factory=list, description="List of root backup folders")
+    backups: List[BackupRootFolder] = Field(default_factory=list, description="List of root backup folders")
     file_path: str
 
-    def add_backup(self, backup: FolderUpload) -> None:
+    def add_backup(self, backup: BackupRootFolder) -> None:
         """
         Add a new backup or update an existing one by folder name.
         """
         for idx, existing_backup in enumerate(self.backups):
-            if existing_backup.name == backup.name:
+            if existing_backup.token == backup.token:
                 self.backups[idx] = backup
                 return
         self.backups.append(backup)

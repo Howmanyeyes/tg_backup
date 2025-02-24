@@ -5,7 +5,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from consts import BOT_TOKEN, logger, chats
 from utils import ChatTrackingMiddleware
-import error_router, start_router, settings, backup
+import error_router, start_router, settings, backup_router
 
 async def main():
     bot = Bot(token=BOT_TOKEN)
@@ -16,7 +16,7 @@ async def main():
     dp.include_router(start_router.router)
 
     dp.include_router(settings.router)
-    dp.include_router(backup.router)
+    dp.include_router(backup_router.router)
 
     dp.include_router(error_router.router)
     
